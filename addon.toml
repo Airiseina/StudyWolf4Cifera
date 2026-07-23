@@ -1,0 +1,18 @@
+[addon]
+id = "study-wolf.cifera"
+name = "Study Wolf for Cifera"
+description = "做题体验该优化了"
+version = "1.0.0"
+author = "Silver Wolf"
+
+# 劫持JSBridge
+[[rules]]
+pattern = ["\\.chaoxing\\.com.*CXJSBridge\\.js"]
+action = "replace_content"
+resource = "dist/jsbridge.js"
+
+# 拦截多端登录检测
+[[rules]]
+pattern = ["detect\\.chaoxing\\.com.*\\.js"]
+action = "block"
+status_code = 404

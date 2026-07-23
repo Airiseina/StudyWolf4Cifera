@@ -1,0 +1,13 @@
+{
+  "name": "@study-wolf-cifera/shared-types",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/index.d.ts",
+  "types": "src/index.d.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  }
+}

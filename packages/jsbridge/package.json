@@ -1,0 +1,19 @@
+{
+    "name": "@study-wolf-cifera/jsbridge",
+    "version": "1.0.0",
+    "type": "module",
+    "description": "Cifera JSBridge",
+    "main": "src/index.ts",
+    "scripts": {
+        "build": "bun run build.ts",
+        "typecheck": "tsc --noEmit"
+    },
+    "devDependencies": {
+        "@study-wolf-cifera/shared-types": "workspace:*",
+        "@types/bun": "^latest",
+        "bun-types": "latest"
+    },
+    "peerDependencies": {
+        "typescript": "^7"
+    }
+}

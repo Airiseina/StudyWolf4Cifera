@@ -1,107 +1,96 @@
-import type { CiferaConfig } from "@study-wolf-cifera/shared-types";
+import type { CiferaConfig } from '@study-wolf-cifera/shared-types';
 
-/** 允许代理改写的协议白名单 */
+/** 允许被改写成代理 URL 的协议。 */
 const ALLOWED_SCHEMES = new Set([
     'http', 'https', 'ftp', 'ftps', 'ws', 'wss',
 ]);
 
-/**
- * 读取 Cifera 注入的全局配置
- * 本项目作为 Cifera 的 addon，__CIFERA__ 由 Cifera 在 HTML 注入时自动设置
- */
+/** 读取 Cifera 代理注入到每个改写文档里的配置；没有 window 时（例如服务端或单测环境）返回空。 */
 function getConfig(): CiferaConfig | undefined {
-    return window.__CIFERA__;
+    return typeof window === 'undefined' ? undefined : window.__CIFERA__;
 }
 
 /**
- * 判断 URL 是否应跳过改写
- * 白名单模式：仅改写已知协议的绝对 URL，未知协议（如 jsBridge://、weixin://）不拦截
+ * 判断 URL 是否应当原样放过。
+ *
+ * 只改写带已知协议的绝对地址；页内锚点、已经改写过的地址，以及 `weixin://` 这类应用协议
+ * 都不动。
  */
 function shouldSkip(url: string): boolean {
     if (!url || url.trim() === '') return true;
     if (url[0] === '#') return true;
-    // 已包含 _cifera_ 前缀参数，跳过
+    // 已经带了代理参数。
     if (url.includes('_cifera_')) return true;
-    // 检查是否包含协议前缀（形如 "xxx:"）
     const colonIdx = url.indexOf(':');
     if (colonIdx > 0) {
         const scheme = url.substring(0, colonIdx).toLowerCase();
-        // 只有白名单中的协议才改写，未知协议跳过
         if (!ALLOWED_SCHEMES.has(scheme)) return true;
     }
     return false;
 }
 
 /**
- * 代理 host 归一化
- * 检测 URL host 是否存在以下问题并修复：
- *  1. host 为代理 host 或其子域拼接（如业务代码 'api.' + window.location.host）
- *     → 将代理 host 部分替换为源站 host，保留子域前缀
- *  2. host 为源站 host 或其子域，但被错误拼接了代理端口（如 'cn.bing.com:' + window.location.port）
- *     → 剥离错误的代理端口
+ * 修复页面代码拼接 `window.location` 造成的畸形主机名。
  *
- * 示例（代理 host=127.0.0.1:8080, 源站 host=example.com）：
- *   127.0.0.1:8080         → example.com            （代理 host 本身）
- *   127.0.0.1              → example.com            （代理 hostname）
- *   api.127.0.0.1:8080     → api.example.com        （代理 host 子域）
- *   api.127.0.0.1          → api.example.com        （代理 hostname 子域）
- *   example.com:8080       → example.com            （源站 host + 代理端口）
- *   sub.example.com:8080   → sub.example.com        （源站子域 + 代理端口）
- *   other.com:8080         → other.com              （其他 host + 代理端口，剥离）
- *   other.com              → other.com              （不匹配，原样返回）
+ * 在代理下 `window.location` 是*代理*主机，因此 `'api.' + window.location.host` 或
+ * `host + ':' + window.location.port` 这类写法会拼出看着合理、实际指向代理的地址。修复两类
+ * 情况：
+ *
+ *  1. 代理主机或其子域映射回源站主机，保留子域前缀。
+ *  2. 任意主机尾部多出来的代理端口一律剥掉。
+ *
+ * 以 `proxyHost = example.com`、访问地址 `127.0.0.1:8080` 为例：
+ *
+ * | Input                  | Output              | Reason                        |
+ * |------------------------|---------------------|-------------------------------|
+ * | `127.0.0.1:8080`       | `example.com`       | the proxy host itself         |
+ * | `127.0.0.1`            | `example.com`       | proxy hostname without port   |
+ * | `api.127.0.0.1:8080`   | `api.example.com`   | subdomain of the proxy host   |
+ * | `api.127.0.0.1`        | `api.example.com`   | subdomain, portless           |
+ * | `example.com:8080`     | `example.com`       | origin host, proxy port       |
+ * | `sub.example.com:8080` | `sub.example.com`   | origin subdomain, proxy port  |
+ * | `other.com:8080`       | `other.com`         | unrelated host, proxy port    |
+ * | `other.com`            | `other.com`         | nothing to repair             |
  */
 function normalizeProxyHost(host: string, proxyHost: string): string {
     if (!host || !proxyHost) return host;
 
-    const currentProxyHost = window.location.host;       // 如 "127.0.0.1:8080"
-    const currentProxyHostname = window.location.hostname; // 如 "127.0.0.1"
-    const currentProxyPort = window.location.port;        // 如 "8080"
+    const currentProxyHost = window.location.host;         // e.g. "127.0.0.1:8080"
+    const currentProxyHostname = window.location.hostname; // e.g. "127.0.0.1"
+    const currentProxyPort = window.location.port;         // e.g. "8080"
 
-    // 提取源站 hostname（proxyHost 可能含端口，如 "example.com:443"）
+    // 配置里的主机可能带端口（"example.com:443"）；子域判断只用主机名。
     let originHostname = proxyHost;
     try {
         originHostname = new URL('http://' + proxyHost).hostname;
     } catch {
-        // 解析失败，保持原值
+        // 解析失败就按原值用。
     }
 
-    // 步骤 1：检测并剥离错误拼接的 proxy port
-    // 页面 JS 可能将 window.location.port 拼接到任意 host 上（包括当前源站、其他源站、代理 host）
+    // 第 1 步：剥掉拼到任意主机上的代理端口。
     if (currentProxyPort && host.endsWith(':' + currentProxyPort)) {
         const hostname = host.slice(0, host.length - currentProxyPort.length - 1);
-        // hostname 是源站 hostname 本身 → 返回 proxyHost（保留源站端口）
+        // 就是源站主机名：还原成配置里的主机（含端口）。
         if (hostname === originHostname) {
             return proxyHost;
         }
-        // hostname 是源站 hostname 的子域 → 返回 hostname（去掉错误端口）
+        // 源站主机名的子域：保留子域，去掉端口。
         if (originHostname && hostname.endsWith('.' + originHostname)) {
             return hostname;
         }
-        // hostname 是代理 host 相关 → 去掉端口，继续后续代理 host 检测
-        if (hostname === currentProxyHost || hostname === currentProxyHostname ||
-            hostname.endsWith('.' + currentProxyHost) || hostname.endsWith('.' + currentProxyHostname)) {
-            host = hostname;
-        } else {
-            // 其他任意 hostname 携带代理端口：
-            // 极大概率是页面 JS 将 window.location.port 拼接到外部 host 上
-            // （如 kb.chaoxing.com + ':' + window.location.port → kb.chaoxing.com:8080）
-            // 剥离端口，与后端 stripProxyPort 逻辑一致
-            host = hostname;
-        }
+        // 与代理相关、或无关主机误带代理端口：统一去掉端口。
+        host = hostname;
     }
 
-    // 步骤 2：代理 host 检测（原有逻辑）
-    // 完全匹配代理 host（含端口）或代理 hostname（不含端口）
+    // 第 2 步：把代理主机映射回源站主机，保留子域前缀。
     if (host === currentProxyHost || host === currentProxyHostname) {
         return proxyHost;
     }
-    // 子域拼接：以 ".<currentProxyHost>" 结尾（如 "api.127.0.0.1:8080"）
     const dotProxyHost = '.' + currentProxyHost;
     if (host.endsWith(dotProxyHost)) {
         const prefix = host.slice(0, host.length - dotProxyHost.length);
         return prefix + '.' + proxyHost;
     }
-    // 子域拼接：以 ".<currentProxyHostname>" 结尾（如 "api.127.0.0.1"）
     const dotProxyHostname = '.' + currentProxyHostname;
     if (host.endsWith(dotProxyHostname)) {
         const prefix = host.slice(0, host.length - dotProxyHostname.length);
@@ -112,15 +101,21 @@ function normalizeProxyHost(host: string, proxyHost: string): string {
 }
 
 /**
- * 将 URL 改写为代理 URL
- * 与 Cifera 运行时（scripts/src/rewriter.ts）的 rewriteUrl 逻辑一致
- * 读取 __CIFERA__ 全局配置来确定代理参数
+ * 把 URL 改写成代理地址。
  *
- * 代理 URL 格式：http://<proxy_host>/<source_path>?_cifera_h=<source_host>&_cifera_s=<source_schema>&<source_query>
+ * 与 Cifera 对文档和资源的改写保持一致，使运行期拼出来的地址（上传、跳转、XHR 目标）在代理
+ * 下依然可用：
  *
- * @param url 原始 URL
- * @param baseUrl 可选的基础 URL，用于解析相对路径
- * @returns 改写后的代理 URL，或原始 URL（如果不需改写）
+ * ```text
+ * http://<proxy_host>/<source_path>?_cifera_h=<source_host>&_cifera_s=<source_scheme>&<source_query>
+ * ```
+ *
+ * 同源地址只补代理参数；其余地址重建到当前页面 origin 上，目标主机与协议放进
+ * `_cifera_h` / `_cifera_s`。
+ *
+ * @param url - 要改写的地址，可绝对可相对。
+ * @param baseUrl - 解析相对地址的基准，默认当前页面。
+ * @returns 改写后的地址；不该改写或改写失败时返回原值。
  */
 export function rewriteUrl(url: string, baseUrl?: string): string {
     if (shouldSkip(url)) return url;
@@ -141,20 +136,15 @@ export function rewriteUrl(url: string, baseUrl?: string): string {
             return url;
         }
 
-        // 修复代理 host 子域拼接
-        // 业务代码可能执行 'api.' + window.location.host 得到 'api.127.0.0.1:8080'
-        // 此处将其归一化为 'api.<源站host>'，避免错误代理
         const adjustedHost = normalizeProxyHost(parsed.host, PROXY_HOST);
         if (adjustedHost !== parsed.host) {
             parsed.host = adjustedHost;
         }
 
-        // 判断是否为同源请求（目标 host 与当前页面 host 相同）
         const isSameOrigin = parsed.host === window.location.host &&
             parsed.protocol === window.location.protocol;
 
         if (isSameOrigin) {
-            // 同源请求：只需追加代理参数
             parsed.searchParams.set('_cifera_h', PROXY_HOST);
             if (PROXY_SCHEMA && PROXY_SCHEMA !== 'http') {
                 parsed.searchParams.set('_cifera_s', PROXY_SCHEMA);
@@ -162,11 +152,9 @@ export function rewriteUrl(url: string, baseUrl?: string): string {
             return parsed.toString();
         }
 
-        // 跨域请求：提取目标 host/scheme，重写为代理 URL
         const targetHost = parsed.host;
         const targetSchema = parsed.protocol.replace(':', '');
 
-        // 构建代理 URL：使用当前页面 origin + 原始路径
         const proxyUrl = new URL(parsed.pathname + parsed.search, window.location.origin);
         proxyUrl.searchParams.set('_cifera_h', targetHost);
         if (targetSchema && targetSchema !== 'http') {

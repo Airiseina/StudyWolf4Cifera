@@ -1,18 +1,21 @@
-import { InterceptorHandler } from "@study-wolf-cifera/shared-types";
-import { rewriteUrl } from "../utils/proxy_url";
+import type { InterceptorHandler } from '@study-wolf-cifera/shared-types';
+
+import { rewriteUrl } from '../utils/proxy_url.js';
 
 /**
- * 代理URL适配器
- * 拦截 CLIENT_OPEN_URL 通知，将其中的 webUrl 改写为代理 URL
- * 改写逻辑与 Cifera 运行时的 URL 改写一致，通过 __CIFERA__ 全局变量获取代理配置
+ * 让 `CLIENT_OPEN_URL` 留在代理里。
+ *
+ * 页面会要求客户端用它自己的 web 容器打开链接，那些链接一旦离开代理就等于离开了插件，因此
+ * 先把载荷里的 `webUrl` 改写成代理地址。通知本身原样转发。
  */
 export const interceptorProxyAdapter: InterceptorHandler<any> = (ctx, next) => {
-    if (ctx.args.name === "CLIENT_OPEN_URL" && ctx.args.payload?.["webUrl"]) {
-        const originalUrl = ctx.args.payload["webUrl"];
+    const args = ctx.args as { name?: string; payload?: Record<string, any> };
+    if (args?.name === 'CLIENT_OPEN_URL' && typeof args.payload?.['webUrl'] === 'string') {
+        const originalUrl = args.payload['webUrl'];
         const proxyUrl = rewriteUrl(originalUrl);
         if (proxyUrl !== originalUrl) {
-            ctx.args.payload["webUrl"] = proxyUrl;
+            args.payload['webUrl'] = proxyUrl;
         }
     }
     next();
-}
+};

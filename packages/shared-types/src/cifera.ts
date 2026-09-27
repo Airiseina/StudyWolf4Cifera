@@ -1,11 +1,11 @@
-/** Cifera 代理全局配置（由 Cifera 注入到页面中的 __CIFERA__ 变量） */
+/** Cifera 代理注入到每个改写文档里的配置。 */
 export interface CiferaConfig {
-    /** 源站主机名（如 www.example.com，可含端口如 example.com:443） */
+    /** 源站主机，例如 `www.example.com`；可能带端口，如 `example.com:443`。 */
     h: string;
-    /** 源站协议（如 https），默认 http */
+    /** 源站协议，例如 `https`；缺省按 `http` 处理。 */
     s: string;
-    /** 当前请求的 Referer（可选） */
+    /** 产生该文档的请求的 Referer，若有。 */
     r?: string;
-    /** Cookie 托管数据（可选，由 Cifera Cookie 托管系统注入） */
+    /** Cifera Cookie 托管的数据，启用时存在。 */
     c?: Record<string, any>;
 }

@@ -5,13 +5,31 @@
     "": {
       "name": "study-wolf-cifera",
     },
+    "packages/fake-screen": {
+      "name": "@study-wolf-cifera/fake-screen",
+      "version": "1.0.0",
+      "dependencies": {
+        "@zumer/snapdom": "^3.1.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^latest",
+        "playwright-core": "^1.63.0",
+      },
+      "peerDependencies": {
+        "typescript": "^7",
+      },
+    },
     "packages/jsbridge": {
       "name": "@study-wolf-cifera/jsbridge",
       "version": "1.0.0",
+      "dependencies": {
+        "@study-wolf-cifera/fake-screen": "workspace:*",
+      },
       "devDependencies": {
         "@study-wolf-cifera/shared-types": "workspace:*",
         "@types/bun": "^latest",
         "bun-types": "latest",
+        "playwright-core": "^1.63.0",
       },
       "peerDependencies": {
         "typescript": "^7",
@@ -26,6 +44,8 @@
     },
   },
   "packages": {
+    "@study-wolf-cifera/fake-screen": ["@study-wolf-cifera/fake-screen@workspace:packages/fake-screen"],
+
     "@study-wolf-cifera/jsbridge": ["@study-wolf-cifera/jsbridge@workspace:packages/jsbridge"],
 
     "@study-wolf-cifera/shared-types": ["@study-wolf-cifera/shared-types@workspace:packages/shared-types"],
@@ -74,10 +94,16 @@
 
     "@typescript/typescript-win32-x64": ["@typescript/typescript-win32-x64@7.0.2", "https://registry.npmmirror.com/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz", { "os": "win32", "cpu": "x64" }, "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g=="],
 
-    "bun-types": ["bun-types@1.3.14", "https://registry.npmmirror.com/bun-types/-/bun-types-1.3.14.tgz", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
+    "@zumer/snapdom": ["@zumer/snapdom@3.1.0", "https://registry.npmmirror.com/@zumer/snapdom/-/snapdom-3.1.0.tgz", {}, "sha512-ULeezok/NSE50+ROu+M9scJ1cRBKPx7hy4SFqTVg3zLm7lihvKpIO36QAhmnudEJMlsQQIwCxzGAq5aM536fyg=="],
+
+    "bun-types": ["bun-types@1.4.2", "https://registry.npmmirror.com/bun-types/-/bun-types-1.4.2.tgz", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "playwright-core": ["playwright-core@1.63.0", "https://registry.npmmirror.com/playwright-core/-/playwright-core-1.63.0.tgz", { "bin": { "playwright-core": "cli.js" } }, "sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg=="],
 
     "typescript": ["typescript@7.0.2", "https://registry.npmmirror.com/typescript/-/typescript-7.0.2.tgz", { "optionalDependencies": { "@typescript/typescript-aix-ppc64": "7.0.2", "@typescript/typescript-darwin-arm64": "7.0.2", "@typescript/typescript-darwin-x64": "7.0.2", "@typescript/typescript-freebsd-arm64": "7.0.2", "@typescript/typescript-freebsd-x64": "7.0.2", "@typescript/typescript-linux-arm": "7.0.2", "@typescript/typescript-linux-arm64": "7.0.2", "@typescript/typescript-linux-loong64": "7.0.2", "@typescript/typescript-linux-mips64el": "7.0.2", "@typescript/typescript-linux-ppc64": "7.0.2", "@typescript/typescript-linux-riscv64": "7.0.2", "@typescript/typescript-linux-s390x": "7.0.2", "@typescript/typescript-linux-x64": "7.0.2", "@typescript/typescript-netbsd-arm64": "7.0.2", "@typescript/typescript-netbsd-x64": "7.0.2", "@typescript/typescript-openbsd-arm64": "7.0.2", "@typescript/typescript-openbsd-x64": "7.0.2", "@typescript/typescript-sunos-x64": "7.0.2", "@typescript/typescript-win32-arm64": "7.0.2", "@typescript/typescript-win32-x64": "7.0.2" }, "bin": { "tsc": "bin/tsc" } }, "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA=="],
 
     "undici-types": ["undici-types@8.3.0", "https://registry.npmmirror.com/undici-types/-/undici-types-8.3.0.tgz", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
+
+    "@types/bun/bun-types": ["bun-types@1.3.14", "https://registry.npmmirror.com/bun-types/-/bun-types-1.3.14.tgz", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
   }
 }

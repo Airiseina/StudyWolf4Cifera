@@ -3,7 +3,7 @@
     "target": "ES6",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

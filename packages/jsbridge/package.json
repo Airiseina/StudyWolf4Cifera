@@ -6,12 +6,17 @@
     "main": "src/index.ts",
     "scripts": {
         "build": "bun run build.ts",
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "test": "bun test"
+    },
+    "dependencies": {
+        "@study-wolf-cifera/fake-screen": "workspace:*"
     },
     "devDependencies": {
         "@study-wolf-cifera/shared-types": "workspace:*",
         "@types/bun": "^latest",
-        "bun-types": "latest"
+        "bun-types": "latest",
+        "playwright-core": "^1.63.0"
     },
     "peerDependencies": {
         "typescript": "^7"

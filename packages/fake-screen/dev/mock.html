@@ -1,0 +1,67 @@
+<!doctype html>
+<!--
+  预览用的"考试页"模拟页：只求覆盖会让截屏出问题的那几类内容——跨域图片、跨域 CSS 背景、同源 iframe、
+  长滚动列表、底部操作栏。真实考试页的 DOM 结构复杂得多，但布局骨架与坑位一致。
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/fixture.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font: 15px/1.7 -apple-system, "Microsoft YaHei", sans-serif; color: #222; background: #f7f8fa; }
+    header { background: #0099ff; color: #fff; padding: 12px 14px; }
+    header h1 { font-size: 16px; font-weight: 600; }
+    header p { font-size: 12px; opacity: .9; }
+    .card { background: #fff; margin: 10px; border-radius: 8px; padding: 12px; }
+    .card h2 { font-size: 15px; margin-bottom: 8px; }
+    .card p { font-size: 14px; color: #444; }
+    .option { display: flex; gap: 8px; align-items: flex-start; padding: 8px 0; border-top: 1px solid #eef0f2; }
+    .option b { flex: 0 0 22px; height: 22px; border: 1px solid #cfd6dd; border-radius: 50%;
+                text-align: center; font-weight: 400; color: #667; font-size: 13px; line-height: 20px; }
+    .media img { width: 100%; border-radius: 6px; display: block; }
+    .cross-bg { height: 96px; border-radius: 6px; display: flex; align-items: flex-end; padding: 6px;
+                color: #123; font-size: 12px; }
+    iframe { width: 100%; height: 88px; border: 1px solid #e3e7ea; border-radius: 6px; }
+    footer { position: sticky; bottom: 0; display: flex; gap: 8px; padding: 8px 10px;
+             background: #ffffff; border-top: 1px solid #eef0f2; }
+    footer button { flex: 1; padding: 10px; border: 1px solid #0099ff; border-radius: 6px;
+                    background: #fff; color: #0099ff; font-size: 14px; }
+    footer button.primary { background: #0099ff; color: #fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>第 11 章 单元测试</h1>
+    <p>单选题 · 共 20 题 · 剩余 42:15</p>
+  </header>
+
+  <div class="card">
+    <h2>1. 下列关于进程与线程的描述，正确的是：</h2>
+    <div class="option"><b>A</b><span>进程是资源分配的基本单位，线程是调度的基本单位</span></div>
+    <div class="option"><b>B</b><span>线程拥有独立的地址空间</span></div>
+    <div class="option"><b>C</b><span>进程间切换开销小于线程间切换</span></div>
+    <div class="option"><b>D</b><span>同一进程内的线程不能共享文件描述符</span></div>
+  </div>
+
+  <div class="card media">
+    <h2>附图（跨域，仅经代理可读）</h2>
+    <img src="__ASSET_ORIGIN__/photo.png" alt="跨域图片" onerror="this.replaceWith(Object.assign(document.createElement('div'),{textContent:'跨域图片占位'}))">
+    <div class="cross-bg" style="background-color: #eef3ff">跨域 CSS 背景</div>
+    <iframe src="/mock-iframe.html" title="同源 iframe"></iframe>
+  </div>
+
+  <div class="card">
+    <h2>2. 以下说法错误的是：</h2>
+    <p>页面越滚越长，用来验证截屏只取可见视口，而不是整页。</p>
+    <p style="height: 420px; padding-top: 380px; color: #aab">（滚到这里已经超出视口）</p>
+  </div>
+
+  <footer>
+    <button>上一题</button>
+    <button>标记</button>
+    <button class="primary">下一题</button>
+  </footer>
+</body>
+</html>

@@ -1,36 +1,22 @@
-import { Callback, IJSBridge, InterceptorContext, InterceptorHandler, InterceptorOptions } from "@study-wolf-cifera/shared-types";
+import { InterceptorContext, InterceptorHandler, InterceptorOptions, InterceptorPoint } from "@study-wolf-cifera/shared-types";
 
-/** 内部拦截器节点 */
+/** 已注册的拦截器及其补全后的选项。 */
 interface InterceptorNode<T = any> {
     handler: InterceptorHandler<T>;
     options: Required<InterceptorOptions>;
 }
 
-/** 支持的拦截点 */
-export type InterceptorPoint =
-    | 'prePostNotification'
-    | 'postPostNotification'
-    | 'preTrigger'
-    | 'postTrigger'
-    | 'preBridgeCall'
-    | 'postBridgeCall'
-    | 'preSetDevice'
-    | 'postSetDevice'
-    | 'preBind'
-    | 'postBind'
-    | 'preUnbind'
-    | 'postUnbind'
-    | 'prePopNotificationObject'
-    | 'postPopNotificationObject';
-
-// ==================== Interceptor 管理器 ====================
-
+/** 拦截器的注册表与执行器。 */
 export class InterceptorManager {
     private interceptors: Map<InterceptorPoint, InterceptorNode[]> = new Map();
 
     /**
-     * 注册拦截器
-     * @returns 卸载函数
+     * 在 `point` 上注册拦截器。
+     *
+     * @param point - 挂载的拦截时机。
+     * @param handler - 拦截器实现；调用 `next()` 继续责任链。
+     * @param options - 条件、优先级、名称与一次性行为。
+     * @returns 用于移除该拦截器的函数。
      */
     public use<T = any>(
         point: InterceptorPoint,
@@ -53,10 +39,9 @@ export class InterceptorManager {
 
         const list = this.interceptors.get(point)!;
         list.push(node);
-        // 按优先级排序（高优先级在前）
+        // 优先级高的在前；优先级相同则保持注册顺序。
         list.sort((a, b) => b.options.priority - a.options.priority);
 
-        // 返回卸载函数
         return () => {
             const idx = list.indexOf(node);
             if (idx !== -1) {
@@ -66,28 +51,36 @@ export class InterceptorManager {
     }
 
     /**
-     * 劫持某个拦截点（阻止原始方法执行，完全由拦截器接管）
+     * 注册接管式拦截器：被拦截的操作完全不执行。
+     *
+     * 用于绝不能抵达客户端的协议；比在普通拦截器里写 `ctx.cancel` 更直白。
      */
     public hijack<T = any>(
         point: InterceptorPoint,
         handler: (ctx: InterceptorContext<T>) => void | Promise<void>,
         options: Omit<InterceptorOptions, 'once'> = {}
     ): () => void {
-        return this.use<T>(point, async (ctx, next) => {
+        return this.use<T>(point, async (ctx) => {
             await handler(ctx);
-            // 劫持模式下不调用 next，原始方法不会执行
+            // 故意不调用 `next()`：原操作不会执行。
             ctx.cancel = true;
         }, { ...options, once: false });
     }
 
     /**
-     * 执行拦截器链
+     * 执行 `point` 上的拦截器链。
+     *
+     * @param point - 要执行的拦截时机。
+     * @param args - 交给每个拦截器的可变参数对象，即 `ctx.args`。
+     * @param method - 拦截器看到的 `ctx.method`，通常就是 bridge 方法名。
+     * @param originalFn - 被拦截的操作；只有 post 类时机可以省略。
+     * @returns 原操作的返回值；被取消时返回 `undefined`。
      */
     public async execute<T = any>(
         point: InterceptorPoint,
         args: T,
         method: string,
-        originalFn: () => any
+        originalFn?: () => any
     ): Promise<any> {
         const list = this.interceptors.get(point) ?? [];
         const ctx: InterceptorContext<T> = {
@@ -96,10 +89,10 @@ export class InterceptorManager {
             cancel: false
         };
 
-        // 过滤出符合条件的拦截器
+        // 事先过滤一次：某个拦截器在运行中注册的新拦截器不应被同一条链调用。
         const activeInterceptors = list.filter(node => node.options.condition!(ctx));
 
-        // 构建链式调用
+        // 组装责任链
         let index = 0;
         const next = async (): Promise<void> => {
             if (ctx.cancel) return;
@@ -108,15 +101,15 @@ export class InterceptorManager {
                 const node = activeInterceptors[index++];
                 try {
                     await node.handler(ctx, next);
-                    // 如果是 once 拦截器，执行后移除
+                    // 一次性拦截器执行后即移除
                     if (node.options.once) {
-                        const list = this.interceptors.get(point)!;
-                        const idx = list.indexOf(node);
-                        if (idx !== -1) list.splice(idx, 1);
+                        const current = this.interceptors.get(point)!;
+                        const idx = current.indexOf(node);
+                        if (idx !== -1) current.splice(idx, 1);
                     }
                 } catch (e) {
                     console.error(`[JSBridge Interceptor] Error in "${node.options.name}" at "${point}":`, e);
-                    // 出错不中断链，继续执行下一个
+                    // 单个拦截器报错不应中断整条链。
                     await next();
                 }
             }
@@ -124,11 +117,10 @@ export class InterceptorManager {
 
         await next();
 
-        if (ctx.cancel) {
+        if (ctx.cancel || !originalFn) {
             return undefined;
         }
 
-        // 执行原始方法
         try {
             const result = await originalFn();
             ctx.result = result;
@@ -140,13 +132,22 @@ export class InterceptorManager {
     }
 
     /**
-     * 同步执行拦截器链（用于不需要等待的场景）
+     * 同步执行拦截器链，供调用方无法 await 的 bridge 方法使用。
+     *
+     * 这里注册的拦截器不能是异步的：Promise 不会被等待，只会打一条告警。调用方能等待时优先用
+     * {@link execute}。
+     *
+     * @param point - 要执行的拦截时机。
+     * @param args - 交给每个拦截器的可变参数对象，即 `ctx.args`。
+     * @param method - 拦截器看到的 `ctx.method`。
+     * @param originalFn - 被拦截的操作；只有 post 类时机可以省略。
+     * @returns 原操作的返回值；被取消时返回 `undefined`。
      */
     public executeSync<T = any>(
         point: InterceptorPoint,
         args: T,
         method: string,
-        originalFn: () => any
+        originalFn?: () => any
     ): any {
         const list = this.interceptors.get(point) ?? [];
         const ctx: InterceptorContext<T> = {
@@ -165,14 +166,13 @@ export class InterceptorManager {
                 const node = activeInterceptors[index++];
                 try {
                     const maybePromise = node.handler(ctx, next);
-                    // 如果是 Promise，给出警告但继续
                     if (maybePromise && typeof (maybePromise as any).then === 'function') {
                         console.warn(`[JSBridge Interceptor] Async interceptor "${node.options.name}" used in sync context at "${point}"`);
                     }
                     if (node.options.once) {
-                        const list = this.interceptors.get(point)!;
-                        const idx = list.indexOf(node);
-                        if (idx !== -1) list.splice(idx, 1);
+                        const current = this.interceptors.get(point)!;
+                        const idx = current.indexOf(node);
+                        if (idx !== -1) current.splice(idx, 1);
                     }
                 } catch (e) {
                     console.error(`[JSBridge Interceptor] Error in "${node.options.name}" at "${point}":`, e);
@@ -183,7 +183,7 @@ export class InterceptorManager {
 
         next();
 
-        if (ctx.cancel) {
+        if (ctx.cancel || !originalFn) {
             return undefined;
         }
 
@@ -198,7 +198,7 @@ export class InterceptorManager {
     }
 
     /**
-     * 移除所有拦截器
+     * 移除 `point` 上的全部拦截器；不传参数则清空所有时机。
      */
     public clear(point?: InterceptorPoint): void {
         if (point) {
@@ -209,7 +209,7 @@ export class InterceptorManager {
     }
 
     /**
-     * 获取已注册的拦截器列表（调试用）
+     * 列出已注册的拦截器，供调试使用。
      */
     public getInterceptors(point?: InterceptorPoint): { point: InterceptorPoint; name: string; priority: number }[] {
         if (point) {
@@ -226,3 +226,4 @@ export class InterceptorManager {
         return result;
     }
 }
+

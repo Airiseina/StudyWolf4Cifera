@@ -1,0 +1,293 @@
+<!doctype html>
+<!--
+  本地预览：实时合成伪造帧，并与真机截图叠对。
+
+  被截取的对象是右侧那个 iframe（模拟考试页），因此控制面板本身不会被合成进去；插件自己插入的节点都带
+  data-sw4c，也会被 SnapDOM 排除（见 capture/snapdom.ts）。
+-->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>伪造帧预览 · Study Wolf for Cifera</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body { margin: 0; display: flex; gap: 16px; padding: 16px; background: #17171b; color: #e8e8e8;
+           font: 13px/1.6 -apple-system, "Microsoft YaHei", sans-serif; }
+    aside { width: 360px; flex: 0 0 360px; }
+    section { border: 1px solid #33333c; border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+    h2 { margin: 0 0 8px; font-size: 13px; color: #9ad; font-weight: 600; }
+    label { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+    label span { flex: 1; color: #bbb; }
+    input[type=number], input[type=text], select { width: 92px; background: #22222a; color: #eee;
+           border: 1px solid #45454f; border-radius: 4px; padding: 3px 6px; font: 12px monospace; }
+    input[type=range] { width: 120px; }
+    button { background: #2c3e50; color: #eee; border: 1px solid #48607a; border-radius: 6px;
+             padding: 6px 10px; margin: 3px 4px 0 0; cursor: pointer; font: 13px sans-serif; }
+    button:hover { background: #35495e; }
+    main { display: flex; gap: 16px; align-items: flex-start; }
+    #stage { position: relative; width: 480px; flex: 0 0 auto; border: 1px solid #33333c; border-radius: 8px;
+             overflow: hidden; background: #000; }
+    #frame, #reference { display: block; width: 100%; }
+    #reference { position: absolute; left: 0; top: 0; opacity: 0; pointer-events: none;
+                 transform-origin: top left; }
+    #mockWrap { border: 1px solid #33333c; border-radius: 8px; padding: 6px; background: #101014; }
+    #mockWrap .hint { color: #888; margin-bottom: 4px; }
+    #mock { border: 0; display: block; background: #fff; }
+    #status { color: #8c8; min-height: 1.6em; }
+    #meta { color: #999; font: 12px monospace; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<aside>
+  <section>
+    <h2>设备</h2>
+    <label><span>档位</span>
+      <select id="profile">
+        <option value="huawei-teardrop-1080x2400">设备A 华为（实测）</option>
+        <option value="android-3button" selected>设备B vivo（三键）</option>
+        <option value="android-gesture">Android 手势条</option>
+        <option value="iphone-notch">iPhone 刘海</option>
+      </select>
+    </label>
+    <label><span>屏幕 W×H（CSS px）</span>
+      <input type="number" id="sw" value="360" step="1"> <input type="number" id="sh" value="800" step="1">
+    </label>
+    <label><span>视口 W×H（CSS px）</span>
+      <input type="number" id="vw" value="360" step="1"> <input type="number" id="vh" value="679" step="1">
+    </label>
+    <label><span>输出倍率 scale</span><input type="number" id="scale" value="3.5" step="0.5" min="1" max="4"></label>
+  </section>
+
+  <section>
+    <h2>外壳</h2>
+    <label><span>工具栏标题</span><input type="text" id="title" value="张三 (20230001)"></label>
+    <label><span>右侧文字</span><input type="text" id="rightLabel" value="反馈"></label>
+    <label><span>状态栏时间</span><input type="text" id="time" value="19:29">
+      <input type="checkbox" id="liveTime"> 用真实时间</label>
+    <label><span>电量 %</span><input type="number" id="battery" value="76">
+      <input type="checkbox" id="liveBattery" checked> 用真实电量</label>
+    <label><span>导航栏</span>
+      <select id="navmode">
+        <option value="buttons" selected>三键</option>
+        <option value="gesture">手势条</option>
+        <option value="none">不画</option>
+      </select>
+    </label>
+  </section>
+
+  <section>
+    <h2>人脸悬浮窗（真机实测：右上 100×120 dp）</h2>
+    <label><span>绘制</span><input type="checkbox" id="faceOn" checked></label>
+    <label><span>画面来源</span>
+      <select id="faceSource">
+        <option value="synthetic" selected>内置合成脸</option>
+        <option value="file">本地图片…</option>
+      </select>
+    </label>
+    <label><span>本地图片</span><input type="file" id="faceFile" accept="image/*"></label>
+    <label><span>宽 × 高（dp）</span>
+      <input type="number" id="faceW" value="100"> <input type="number" id="faceH" value="120">
+    </label>
+    <label><span>距右 / 距顶（dp）</span>
+      <input type="number" id="faceX" value="10"> <input type="number" id="faceY" value="85">
+    </label>
+    <label><span>镜像</span><input type="checkbox" id="faceMirror" checked></label>
+    <label><span>显示「图像采集中」</span><input type="checkbox" id="faceLabel" checked></label>
+  </section>
+
+  <section>
+    <h2>对比真机截图</h2>
+    <label><span>截图文件</span><input type="file" id="referenceFile" accept="image/*"></label>
+    <label><span>不透明度</span><input type="range" id="refOpacity" min="0" max="100" value="0"></label>
+    <label><span>水平偏移</span><input type="number" id="refX" value="0" step="1"></label>
+    <label><span>垂直偏移</span><input type="number" id="refY" value="0" step="1"></label>
+  </section>
+
+  <section>
+    <button id="compose">合成</button>
+    <button id="download">下载 PNG</button>
+    <button id="downloadJpg">下载 JPEG</button>
+    <div id="status"></div>
+    <div id="meta"></div>
+  </section>
+</aside>
+
+<main>
+  <div>
+    <div id="stage">
+      <img id="frame" alt="合成结果">
+      <img id="reference" alt="真机截图">
+    </div>
+  </div>
+  <div id="mockWrap">
+    <div class="hint">被截取的页面（mock，1:1）= 右侧 iframe</div>
+    <iframe id="mock" src="/mock.html"></iframe>
+  </div>
+</main>
+
+<script type="module">
+import * as FakeScreen from '/lib.js';
+
+const $ = (id) => document.getElementById(id);
+const mock = $('mock');
+
+/** 真机 UA，让 detectDevice 正确归类（否则分支与档位都不对）。 */
+const UA = 'Mozilla/5.0 (Linux; Android 16; V2507A Build/BP2A.250605.031.A3_V000L1; wv) AppleWebKit/537.36 '
+  + '(KHTML, like Gecko) Version/4.0 Chrome/154.0.8037.22 Mobile Safari/537.36 '
+  + 'com.chaoxing.mobile/ChaoXingStudy_3_6.7.7_android_phone_10945_315';
+
+/** 内置"人脸"：一个不用摄像头的合成画面。 */
+function syntheticFace() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 540;
+  canvas.height = 960;
+  const ctx = canvas.getContext('2d');
+  const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+  gradient.addColorStop(0, '#3b5c7a');
+  gradient.addColorStop(1, '#1d2a38');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  // 头与肩，够看出取景与镜像即可
+  ctx.fillStyle = '#e8c39e';
+  ctx.beginPath();
+  ctx.arc(270, 360, 130, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.ellipse(270, 900, 240, 300, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#26323d';
+  ctx.beginPath();
+  ctx.arc(225, 340, 14, 0, Math.PI * 2);
+  ctx.arc(315, 340, 14, 0, Math.PI * 2);
+  ctx.fill();
+  return canvas;
+}
+
+let uploadedFace = null;
+
+/** 按当前控件拼出 device 覆盖值并合成。 */
+async function compose() {
+  const status = $('status');
+  status.textContent = '合成中…';
+  try {
+    const viewportWidthCss = Number($('vw').value);
+    const viewportHeightCss = Number($('vh').value);
+    mock.style.width = viewportWidthCss + 'px';
+    mock.style.height = viewportHeightCss + 'px';
+
+    const faceSource = $('faceSource').value === 'file' && uploadedFace
+      ? uploadedFace
+      : syntheticFace();
+
+    const frame = await FakeScreen.composeMonitorFrame(mock.contentDocument.documentElement, {
+      device: {
+        userAgent: UA,
+        platform: 'Linux armv8l',
+        maxTouchPoints: 5,
+        devicePixelRatio: Number($('scale').value),
+        screenWidthCss: Number($('sw').value),
+        screenHeightCss: Number($('sh').value),
+        viewportWidthCss,
+        viewportHeightCss
+      },
+      scale: Number($('scale').value),
+      chrome: {
+        profile: $('profile').value,
+        appBar: { title: $('title').value, rightLabel: $('rightLabel').value },
+        statusBar: {
+          // 勾了"用真实…"就交给合成器取（时间取当前、电量走 Battery API，取不到用 76）。
+          ...($('liveTime').checked ? {} : { time: $('time').value }),
+          ...($('liveBattery').checked ? {} : { batteryPercent: Number($('battery').value) })
+        },
+        navBar: { mode: $('navmode').value }
+      },
+      face: {
+        enabled: $('faceOn').checked,
+        source: faceSource,
+        width: Number($('faceW').value),
+        height: Number($('faceH').value),
+        offsetX: Number($('faceX').value),
+        offsetY: Number($('faceY').value),
+        mirror: $('faceMirror').checked,
+        label: $('faceLabel').checked ? '图像采集中' : null
+      },
+      capture: {
+        // 跨域素材走同源代理，等价于 Cifera 在真机上的行为。
+        rewriteUrl: (url) => {
+          const parsed = new URL(url);
+          return parsed.origin === location.origin ? url : '/proxy?url=' + encodeURIComponent(url);
+        }
+      }
+    });
+
+    $('frame').src = frame.canvas.toDataURL('image/jpeg', 0.92);
+    window.__lastFrame__ = frame.canvas;
+    const layout = frame.layout;
+    $('meta').textContent = [
+      `整屏 ${layout.screen.width}x${layout.screen.height} · scale ${layout.scale}`,
+      `状态栏 ${layout.statusBar.height} / 工具栏 ${layout.appBar.height} / 内容 ${layout.content.height} / 导航 ${layout.navBar.height}`,
+      `人脸窗 x=${FakeScreen.computeFaceWindowBox(layout, {
+        width: Number($('faceW').value), height: Number($('faceH').value),
+        offsetX: Number($('faceX').value), offsetY: Number($('faceY').value)
+      }).x}`,
+      `内联资源 ${frame.capture.inlined} 个 · 失败 ${frame.capture.failed.length} 个`,
+      frame.capture.failed.slice(0, 3).map((item) => `  ✗ ${item.url} (${item.reason})`).join('\n')
+    ].join('\n');
+    status.textContent = '合成完成';
+  } catch (error) {
+    status.textContent = '合成失败：' + (error instanceof Error ? error.message : String(error));
+    console.error(error);
+  }
+}
+
+/** 参考图叠加，便于逐像素对齐。 */
+function syncReference() {
+  const reference = $('reference');
+  reference.style.opacity = String(Number($('refOpacity').value) / 100);
+  reference.style.transform = `translate(${$('refX').value}px, ${$('refY').value}px)`;
+}
+
+$('compose').addEventListener('click', () => void compose());
+$('download').addEventListener('click', () => {
+  if (!window.__lastFrame__) return;
+  const link = document.createElement('a');
+  link.download = 'fake-frame.png';
+  link.href = window.__lastFrame__.toDataURL('image/png');
+  link.click();
+});
+$('downloadJpg').addEventListener('click', () => {
+  if (!window.__lastFrame__) return;
+  const link = document.createElement('a');
+  link.download = 'fake-frame.jpg';
+  link.href = window.__lastFrame__.toDataURL('image/jpeg', 0.9);
+  link.click();
+});
+$('faceFile').addEventListener('change', (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const image = new Image();
+  image.onload = () => {
+    uploadedFace = image;
+    $('faceSource').value = 'file';
+  };
+  image.src = URL.createObjectURL(file);
+});
+$('referenceFile').addEventListener('change', (event) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  $('reference').src = URL.createObjectURL(file);
+  $('refOpacity').value = '50';
+  syncReference();
+});
+for (const id of ['refOpacity', 'refX', 'refY']) $(id).addEventListener('input', syncReference);
+
+mock.addEventListener('load', () => void compose());
+await new Promise((resolve) => {
+  if (mock.contentDocument?.readyState === 'complete') resolve();
+  else mock.addEventListener('load', resolve, { once: true });
+});
+void compose();
+</script>
+</body>
+</html>
